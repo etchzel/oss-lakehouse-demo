@@ -1,0 +1,17 @@
+services:
+  trino:
+    image: trinodb/trino:latest
+    container_name: trino
+    networks:
+      - trino-network
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./properties/catalog:/etc/trino/catalog
+      - ./properties/config.properties:/etc/trino/config.properties
+      - ./properties/log.properties:/etc/trino/log.properties
+
+networks:
+  trino-network:
+    name: trino_network
+    driver: bridge

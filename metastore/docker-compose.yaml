@@ -1,0 +1,110 @@
+x-hive-common:
+  &hive-common
+  image: apache/hive:4.0.0
+  environment:
+    &hive-common-env
+    HIVE_METASTORE_DB_HOST: pgstore
+    HIVE_METASTORE_DB_NAME: metastore
+    HIVE_METASTORE_DB_USER: postgres
+    HIVE_METASTORE_DB_PASS: postgres
+    SERVICE_NAME: metastore
+    DB_DRIVER: postgres
+  networks:
+    - metastore-network
+    - spark-network
+    - minio-network
+    - trino-network
+  volumes:
+    - ./hive/jars/hadoop-aws-3.3.4.jar:/opt/hive/lib/hadoop-aws-3.3.4.jar
+    - ./hive/jars/aws-java-sdk-bundle-1.12.262.jar:/opt/hive/lib/aws-java-sdk-bundle-1.12.262.jar
+    - ./hive/jars/postgresql-42.7.4.jar:/opt/hive/lib/postgresql-42.7.4.jar
+    - ./hive/core-site.xml:/opt/hive/conf/core-site.xml
+    - ./hive/hive-site.xml:/opt/hive/conf/hive-site.xml
+  depends_on:
+    &hive-common-depends-on
+    pgstore:
+      condition: service_healthy
+
+services:
+  pgstore:
+    image: postgres:16
+    container_name: pgstore
+    restart: always
+    networks:
+      - metastore-network
+    environment:
+      POSTGRES_DB: metastore
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      PGPORT: 5434
+    ports:
+      - "5434:5434"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "metastore"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  hive-metastore:
+    <<: *hive-common
+    container_name: hive-metastore
+    ports:
+      - "9083:9083"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9083'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # hive-defaultdb-init:
+  #   <<: *hive-common
+  #   container_name: hive-defaultdb-init
+  #   depends_on:
+  #     <<: *hive-common-depends-on
+  #     hive-metastore:
+  #       condition: service_healthy
+  #   environment:
+  #     SERVICE_NAME: hiveserver2
+  #     SERVICE_OPTS: -Dhive.metastore.uris=thrift://hive-metastore:9083
+  #     IS_RESUME: "true"
+  #   entrypoint: >
+  #     bash -c '
+  #     echo "[Init] Starting HiveServer2 in background...";
+  #     /opt/hive/bin/hive --service hiveserver2 & echo $! > /tmp/hiveserver2.pid;
+
+  #     echo "[Init] Waiting for HiveServer2 on localhost:10000...";
+  #     for i in {1..20}; do
+  #       if bash -c "</dev/tcp/localhost/10000" &>/dev/null; then
+  #         echo "[Init] HiveServer2 is ready!";
+  #         break;
+  #       fi
+  #       echo "[Init] Still waiting...";
+  #       sleep 2;
+  #     done;
+
+  #     echo "[Init] Running ALTER DATABASE...";
+  #     /opt/hive/bin/beeline -u jdbc:hive2://localhost:10000 -n hive -e "
+  #       ALTER DATABASE default SET LOCATION '\''s3a://lakehouse/default.db'\'';
+  #     ";
+
+  #     echo "[Init] Shutting down HiveServer2...";
+  #     kill $(cat /tmp/hiveserver2.pid);
+  #     wait $(cat /tmp/hiveserver2.pid);
+
+  #     echo "[Init] Done. Exiting cleanly."
+  #     '
+  #   restart: "no"
+
+networks:
+  metastore-network:
+    name: metastore_network
+    driver: bridge
+  spark-network:
+    name: spark_network
+    external: true
+  minio-network:
+    name: minio_network
+    external: true
+  trino-network:
+    name: trino_network
+    external: true

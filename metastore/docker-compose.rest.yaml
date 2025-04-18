@@ -1,0 +1,28 @@
+services:
+  rest:
+    image: tabulario/iceberg-rest
+    container_name: iceberg-rest
+    networks:
+      - metastore-network
+      - minio-network
+      - spark-network
+    ports:
+      - 8181:8181
+    environment:
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_REGION=us-east-1
+      - CATALOG_WAREHOUSE=s3://warehouse/
+      - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
+      - CATALOG_S3_ENDPOINT=http://minio:9000
+
+networks:
+  metastore-network:
+    name: metastore_network
+    driver: bridge
+  spark-network:
+    name: spark_network
+    external: true
+  minio-network:
+    name: minio_network
+    external: true
